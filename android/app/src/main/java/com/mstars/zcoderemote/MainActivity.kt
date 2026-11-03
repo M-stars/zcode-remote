@@ -171,9 +171,12 @@ fun TasksScreen() {
                 Text("在下方输入框给 PC 端 ZCode 下发第一条任务", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
-            LazyColumn(Modifier.padding(pad).fillMaxSize(), modifier = Modifier.padding(horizontal = 12.dp)) {
+            LazyColumn(Modifier.padding(pad).fillMaxSize().padding(horizontal = 12.dp)) {
                 items(tasks, key = { it.id }) { t ->
-                    Card(Modifier.fillMaxWidth().padding(vertical = 5.dp), onClick = { expanded = if (expanded == t.id) null else t.id }) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                        onClick = { expanded = if (expanded == t.id) null else t.id },
+                    ) {
                         Column(Modifier.padding(12.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 StateChip(t.state)

@@ -151,11 +151,7 @@ object Repo {
                 ws = null
             }
         }
-        return runBlocking { latch.await() }
-    }
-
-    private fun runBlocking(b: suspend () -> Unit) {
-        kotlinx.coroutines.runBlocking { b() }
+        return kotlinx.coroutines.runBlocking { latch.await() }
     }
 
     private fun handleMessage(m: JSONObject) {
