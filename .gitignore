@@ -1,0 +1,23 @@
+# build artifacts
+server/node_modules/
+plugin/node_modules/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+*.apk.idsig
+
+# secrets — NEVER commit
+server/tokens.json
+server/data/
+plugin/**/queue/
+*.token
+.env
+
+# tools & caches
+.tools/
+.claude/
+*.log
+.DS_Store
+Thumbs.db
