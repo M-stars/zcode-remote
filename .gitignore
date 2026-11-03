@@ -1,6 +1,5 @@
 # build artifacts
-server/node_modules/
-plugin/node_modules/
+**/node_modules/
 android/.gradle/
 android/build/
 android/app/build/
