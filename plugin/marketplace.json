@@ -1,0 +1,15 @@
+{
+  "name": "zcode-remote-dev",
+  "plugins": [
+    {
+      "name": "zcode-remote",
+      "source": "./zcode-remote",
+      "version": "0.1.0",
+      "description": "手机远程向 ZCode 客户端布置任务：MCP 桥接收任务，Hook 注入唤醒，远程批准敏感操作",
+      "displayName": "ZCode Remote",
+      "displayName_i18n": { "zh-CN": "手机远程控制" },
+      "description_i18n": { "zh-CN": "手机远程向 ZCode 客户端布置任务：MCP 桥接收任务，Hook 注入唤醒，远程批准敏感操作" },
+      "category": "developer-tools"
+    }
+  ]
+}

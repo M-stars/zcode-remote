@@ -1,0 +1,10 @@
+{
+  "name": "zcode-remote-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "zcode-remote 插件运行时（MCP 桥接进程依赖）",
+  "type": "module",
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

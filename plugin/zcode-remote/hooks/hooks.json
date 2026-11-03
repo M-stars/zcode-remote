@@ -1,0 +1,43 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "process",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/session-start.js"],
+            "timeoutMs": 10000,
+            "statusMessage": "检查远程任务收件箱…"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "process",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/stop.js"],
+            "timeoutMs": 10000,
+            "statusMessage": "检查远程任务队列…"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "process",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/permission-request.js"],
+            "timeoutMs": 320000,
+            "statusMessage": "等待手机端批准…"
+          }
+        ]
+      }
+    ]
+  }
+}

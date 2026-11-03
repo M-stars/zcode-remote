@@ -1,0 +1,9 @@
+{
+  "name": "zcode-remote",
+  "version": "0.1.0",
+  "description": "手机远程向 ZCode 客户端布置任务：MCP 桥接收任务，Hook 注入唤醒，远程批准敏感操作",
+  "author": { "name": "M-stars" },
+  "mcpServers": "./.mcp.json",
+  "hooks": "./hooks/hooks.json",
+  "skills": "./skills"
+}
