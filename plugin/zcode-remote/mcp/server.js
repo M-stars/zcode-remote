@@ -7,8 +7,27 @@
 import readline from 'node:readline';
 import http from 'node:http';
 import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
 import { loadConfig, loadQueue, saveQueue, writeJson, readJson, BRIDGE_FILE } from '../lib.js';
+
+const PLUGIN_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+let lastWake = 0;
+// 收到新任务时尝试唤醒值守会话（需要 Desktop 以 --force-renderer-accessibility 启动才能成功，失败静默）
+function wakeAttempt() {
+  const now = Date.now();
+  if (now - lastWake < 90_000) return;
+  lastWake = now;
+  try {
+    const ps = path.join(PLUGIN_DIR, 'tools', 'uia-wake.ps1');
+    spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps], { detached: true, stdio: 'ignore' }).unref();
+    log('唤醒触发（UIA）');
+  } catch (e) {
+    log('唤醒失败: ' + e.message);
+  }
+}
 
 const SERVER_INFO = { name: 'zcode-remote', version: '0.1.0' };
 const PERM_TIMEOUT_MS = 300_000; // 远程批准最长等待 5 分钟
@@ -50,6 +69,7 @@ function wsConnect() {
         });
         saveQueue(queue);
         log(`收到远程任务 ${msg.task.id}`);
+        wakeAttempt();
       }
     } else if (msg.type === 'perm.decision') {
       resolvePerm(msg.permId, !!msg.allow);
