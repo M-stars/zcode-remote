@@ -94,12 +94,12 @@ object Repo {
 
     private var connecting = false
     private fun connectLoop() {
-        if (connecting || !configured) return
+        if (connecting || !configured.value) return
         connecting = true
         scope.launch {
             var backoff = 2000L
             while (true) {
-                if (!configured) break
+                if (!configured.value) break
                 val opened = openWs()
                 if (opened) {
                     backoff = 2000L
@@ -181,7 +181,7 @@ object Repo {
     }
 
     fun refresh() {
-        if (!configured) return
+        if (!configured.value) return
         scope.launch {
             try {
                 val req = Request.Builder().url("$serverUrl/tasks")
