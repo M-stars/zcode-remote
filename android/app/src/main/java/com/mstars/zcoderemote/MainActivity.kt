@@ -104,8 +104,9 @@ fun App() {
             containerColor = Z.Bg,
             snackbarHost = { SnackbarHost(snackbar) },
         ) { pad ->
+            val configured by Repo.configured.collectAsState()
             Box(Modifier.padding(pad)) {
-                if (Repo.configured) TasksScreen() else SettingsScreen()
+                if (configured) TasksScreen() else SettingsScreen()
             }
         }
     }
@@ -114,7 +115,7 @@ fun App() {
 // ---------- 设置页 ----------
 
 @Composable
-fun SettingsScreen(initialUrl: String = "http://10.0.2.2:8787", initialToken: String = "") {
+fun SettingsScreen(initialUrl: String = "http://10.0.2.2:8787", initialToken: String = "", onSaved: (() -> Unit)? = null) {
     var url by remember { mutableStateOf(initialUrl) }
     var token by remember { mutableStateOf(initialToken) }
     var msg by remember { mutableStateOf<String?>(null) }
@@ -154,7 +155,7 @@ fun SettingsScreen(initialUrl: String = "http://10.0.2.2:8787", initialToken: St
         Button(
             onClick = {
                 busy = true; msg = "连接中…"
-                Repo.save(url, token) { ok, m -> busy = false; msg = m }
+                Repo.save(url, token) { ok, m -> busy = false; msg = m; if (ok) onSaved?.invoke() }
             },
             enabled = !busy,
             modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -217,7 +218,7 @@ fun TasksScreen() {
     LaunchedEffect(Unit) { Repo.refresh() }
 
     if (showSettings) {
-        SettingsScreen(initialUrl = Repo.serverUrl, initialToken = Repo.phoneToken)
+        SettingsScreen(initialUrl = Repo.serverUrl, initialToken = Repo.phoneToken, onSaved = { showSettings = false })
         return
     }
 

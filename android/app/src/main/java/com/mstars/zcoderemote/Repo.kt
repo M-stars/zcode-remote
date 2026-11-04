@@ -47,13 +47,14 @@ object Repo {
     val pendingPerm = MutableStateFlow<PermRequest?>(null)
     val toast = MutableStateFlow<String?>(null)
 
-    val configured: Boolean get() = serverUrl.isNotBlank() && phoneToken.isNotBlank()
+    val configured = MutableStateFlow(false)
 
     fun init(context: Context) {
         prefs = context.getSharedPreferences("zcode-remote", Context.MODE_PRIVATE)
         serverUrl = prefs.getString("serverUrl", "") ?: ""
         phoneToken = prefs.getString("phoneToken", "") ?: ""
-        if (configured) {
+        configured.value = serverUrl.isNotBlank() && phoneToken.isNotBlank()
+        if (configured.value) {
             scope.launch { refresh(); connectLoop() }
         }
     }
@@ -81,6 +82,7 @@ object Repo {
                 serverUrl = base
                 phoneToken = token.trim()
                 prefs.edit().putString("serverUrl", base).putString("phoneToken", phoneToken).apply()
+                configured.value = true
                 refresh()
                 connectLoop()
                 onDone(true, "已连接 $base")
