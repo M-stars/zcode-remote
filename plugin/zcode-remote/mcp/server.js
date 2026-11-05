@@ -18,12 +18,19 @@ const PLUGIN_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const DB_PATH = process.env.ZCODE_REMOTE_DB || path.join(process.env.USERPROFILE || 'C:/Users/13033', '.zcode', 'cli', 'db', 'db.sqlite');
 
 // ---------- 直读共享数据库（会话列表 + 消息，只读连接）----------
-function dbQuery(sql, params = []) {
-  const db = new DatabaseSync(DB_PATH, { readOnly: true });
-  try {
-    return db.prepare(sql).all(...params);
-  } finally {
-    db.close();
+function dbQuery(sql, params = [], retries = 3) {
+  for (let attempt = 0; ; attempt++) {
+    let db = null;
+    try {
+      db = new DatabaseSync(DB_PATH, { readOnly: true });
+      return db.prepare(sql).all(...params);
+    } catch (e) {
+      const busy = /locked|busy/i.test(e.message);
+      if (!busy || attempt >= retries) throw e;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 350);
+    } finally {
+      try { db?.close(); } catch {}
+    }
   }
 }
 
@@ -47,7 +54,8 @@ function handleSessionRequest(msg) {
   } else if (msg.type === 'session.messages') {
     const sid = String(msg.sessionId || '');
     try {
-      const msgs = dbQuery('SELECT id, data, time_created FROM message WHERE session_id=? ORDER BY time_created ASC', [sid]);
+      // 只取最近 60 条（大对话防超载），返回时再转回时间正序
+      const msgs = dbQuery('SELECT id, data, time_created FROM message WHERE session_id=? ORDER BY time_created DESC LIMIT 60', [sid]).reverse();
       const out = [];
       for (const mrow of msgs) {
         let info = {};
@@ -58,7 +66,7 @@ function handleSessionRequest(msg) {
         for (const prow of parts) {
           try {
             const d = JSON.parse(prow.data);
-            if (d.type === 'text' && d.text) parr.push({ type: 'text', text: String(d.text) });
+            if (d.type === 'text' && d.text) parr.push({ type: 'text', text: String(d.text).slice(0, 4000) });
           } catch {}
         }
         if (parr.length) out.push({ info: { role }, parts: parr });
