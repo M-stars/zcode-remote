@@ -29,6 +29,17 @@ data class Task(
 
 data class PermRequest(val permId: String, val tool: String, val summary: String, val taskId: String?)
 
+data class SessionInfo(
+    val sessionId: String,
+    val title: String,
+    val status: String,
+    val mode: String,
+    val workspacePath: String?,
+    val updatedAt: Long,
+)
+
+data class ChatMsg(val role: String, val text: String)
+
 // 单例仓库：REST + WebSocket + 状态流
 object Repo {
     private lateinit var prefs: SharedPreferences
@@ -42,6 +53,8 @@ object Repo {
         private set
 
     val tasks = MutableStateFlow<List<Task>>(emptyList())
+    val sessions = MutableStateFlow<List<SessionInfo>>(emptyList())
+    val chatMessages = MutableStateFlow<Map<String, List<ChatMsg>>>(emptyMap())
     val connected = MutableStateFlow(false)
     val pcOnline = MutableStateFlow(false)
     val pendingPerm = MutableStateFlow<PermRequest?>(null)
@@ -122,7 +135,7 @@ object Repo {
                 opened.set(true)
                 connected.value = true
                 latch.complete(true)
-                scope.launch { refresh() }
+                scope.launch { refresh(); requestSessions() }
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -158,6 +171,54 @@ object Repo {
 
     private fun handleMessage(m: JSONObject) {
         when (m.optString("type")) {
+            "sessions.list.result" -> {
+                val arr = m.optJSONArray("sessions") ?: JSONArray()
+                val list = mutableListOf<SessionInfo>()
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    list.add(
+                        SessionInfo(
+                            sessionId = o.optString("sessionId"),
+                            title = o.optString("title").ifBlank { "未命名会话" },
+                            status = o.optString("status"),
+                            mode = o.optString("mode"),
+                            workspacePath = o.optJSONObject("workspace")?.optString("workspacePath"),
+                            updatedAt = o.optLong("updatedAt"),
+                        )
+                    )
+                }
+                sessions.value = list.sortedByDescending { it.updatedAt }
+            }
+            "session.messages.result" -> {
+                val sid = m.optString("sessionId")
+                val arr = m.optJSONArray("messages") ?: JSONArray()
+                val list = mutableListOf<ChatMsg>()
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    val role = o.optJSONObject("info")?.optString("role") ?: "assistant"
+                    val parts = o.optJSONArray("parts") ?: JSONArray()
+                    val sb = StringBuilder()
+                    for (j in 0 until parts.length()) {
+                        val p = parts.getJSONObject(j)
+                        if (p.optString("type") == "text") sb.append(p.optString("text")).append('\n')
+                    }
+                    if (sb.isNotBlank()) list.add(ChatMsg(role, sb.toString().trim()))
+                }
+                chatMessages.value = chatMessages.value + (sid to list)
+                val err = m.optString("error")
+                if (err.isNotBlank()) toast.value = "读取对话失败: $err"
+            }
+            "session.send.result" -> {
+                val sid = m.optString("sessionId")
+                if (m.optBoolean("ok")) {
+                    toast.value = "已发送到电脑"
+                    scope.launch {
+                        delay(3000); requestMessages(sid)
+                        delay(9000); requestMessages(sid)
+                        delay(15000); requestMessages(sid)
+                    }
+                } else toast.value = "注入失败: ${m.optString("note")}"
+            }
             "task.status" -> patchTask(m.optString("id")) { it.copy(state = m.optString("state"), result = m.optString("note", it.result ?: "")) }
             "task.output" -> {
                 val lines = mutableListOf<String>()
@@ -174,6 +235,32 @@ object Repo {
                 if (m.isNull("taskId")) null else m.optString("taskId"),
             )
         }
+    }
+
+    // ---------- Phase2: 会话列表 / 对话 ----------
+
+    fun requestSessions() {
+        wsSendText("""{"type":"sessions.list"}""")
+    }
+
+    fun requestMessages(sessionId: String) {
+        wsSendText(JSONObject().put("type", "session.messages").put("sessionId", sessionId).toString())
+    }
+
+    fun sendToSession(sessionId: String, text: String) {
+        val cur = chatMessages.value[sessionId] ?: emptyList()
+        chatMessages.value = chatMessages.value + (sessionId to cur + ChatMsg("user", text))
+        wsSendText(
+            JSONObject()
+                .put("type", "session.send")
+                .put("sessionId", sessionId)
+                .put("text", text)
+                .toString()
+        )
+    }
+
+    private fun wsSendText(s: String) {
+        ws?.send(s)
     }
 
     private fun patchTask(id: String, f: (Task) -> Task) {

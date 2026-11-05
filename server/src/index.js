@@ -116,6 +116,16 @@ wss.on('connection', (ws, req) => {
     } catch {
       return;
     }
+    // Phase2: session.* 请求/结果 双向转发（手机↔桥接）
+    const isSessionReq = msg.type && (msg.type === 'sessions.list' || msg.type === 'session.messages' || msg.type === 'session.send');
+    if (isSessionReq && role === 'phone') {
+      sendToPc(msg);
+      return;
+    }
+    if (msg.type && (msg.type.startsWith('sessions.') || msg.type.startsWith('session.')) && msg.type.endsWith('.result') && role === 'pc') {
+      broadcastPhones(msg);
+      return;
+    }
     handleWsMessage(ws, msg);
   });
 

@@ -10,10 +10,73 @@ import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DatabaseSync } from 'node:sqlite';
 import WebSocket from 'ws';
 import { loadConfig, loadQueue, saveQueue, writeJson, readJson, BRIDGE_FILE } from '../lib.js';
 
 const PLUGIN_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const DB_PATH = process.env.ZCODE_REMOTE_DB || path.join(process.env.USERPROFILE || 'C:/Users/13033', '.zcode', 'cli', 'db', 'db.sqlite');
+
+// ---------- 直读共享数据库（会话列表 + 消息，只读连接）----------
+function dbQuery(sql, params = []) {
+  const db = new DatabaseSync(DB_PATH, { readOnly: true });
+  try {
+    return db.prepare(sql).all(...params);
+  } finally {
+    db.close();
+  }
+}
+
+// ---------- Phase2: session.* 请求处理（来自手机，经服务器转发）----------
+function handleSessionRequest(msg) {
+  if (msg.type === 'sessions.list') {
+    try {
+      const rows = dbQuery('SELECT id, title, directory, permission, time_updated FROM session ORDER BY time_updated DESC LIMIT 100');
+      const sessions = rows.map((r) => ({
+        sessionId: r.id,
+        title: r.title || '未命名会话',
+        status: 'idle',
+        mode: r.permission ? String(r.permission).replace(/[{}"]/g, '').slice(0, 20) : '',
+        workspace: { workspacePath: r.directory || '' },
+        updatedAt: Number(r.time_updated) || 0,
+      }));
+      wsSend({ type: 'sessions.list.result', reqId: msg.reqId || null, sessions, error: null });
+    } catch (e) {
+      wsSend({ type: 'sessions.list.result', reqId: msg.reqId || null, sessions: [], error: e.message });
+    }
+  } else if (msg.type === 'session.messages') {
+    const sid = String(msg.sessionId || '');
+    try {
+      const msgs = dbQuery('SELECT id, data, time_created FROM message WHERE session_id=? ORDER BY time_created ASC', [sid]);
+      const out = [];
+      for (const mrow of msgs) {
+        let info = {};
+        try { info = JSON.parse(mrow.data); } catch {}
+        const role = info.role || 'assistant';
+        const parts = dbQuery('SELECT data FROM part WHERE message_id=? ORDER BY COALESCE(sequence, time_created) ASC', [mrow.id]);
+        const parr = [];
+        for (const prow of parts) {
+          try {
+            const d = JSON.parse(prow.data);
+            if (d.type === 'text' && d.text) parr.push({ type: 'text', text: String(d.text) });
+          } catch {}
+        }
+        if (parr.length) out.push({ info: { role }, parts: parr });
+      }
+      wsSend({ type: 'session.messages.result', reqId: msg.reqId || null, sessionId: sid, messages: out, error: null });
+    } catch (e) {
+      wsSend({ type: 'session.messages.result', reqId: msg.reqId || null, sessionId: sid, messages: [], error: e.message });
+    }
+  } else if (msg.type === 'session.send') {
+    // 写通道：UIA 注入当前 Desktop 会话输入框并回车
+    const ps = path.join(PLUGIN_DIR, 'tools', 'uia-wake.ps1');
+    const child = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps, '-text', String(msg.text || '')], { detached: true, stdio: 'ignore' });
+    child.on('exit', (code) => {
+      wsSend({ type: 'session.send.result', reqId: msg.reqId || null, sessionId: msg.sessionId, ok: code === 0, note: code === 0 ? '已注入 Desktop 会话' : '注入失败(需 a11y 模式 Desktop)' });
+    });
+  }
+}
+
 let lastWake = 0;
 // 收到新任务时尝试唤醒值守会话（需要 Desktop 以 --force-renderer-accessibility 启动才能成功，失败静默）
 function wakeAttempt() {
@@ -55,6 +118,10 @@ function wsConnect() {
     try {
       msg = JSON.parse(data.toString());
     } catch {
+      return;
+    }
+    if (msg.type === 'sessions.list' || msg.type === 'session.messages' || msg.type === 'session.send') {
+      handleSessionRequest(msg);
       return;
     }
     if (msg.type === 'task.new' && msg.task) {
